@@ -11,6 +11,11 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.Scanner;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 public class App extends JFrame {
 
@@ -43,11 +48,20 @@ public class App extends JFrame {
     public boolean autoSave = true;
     public Timer autoSaveTimer;
 
+    // file watcher (hot-reload)
+    private ScheduledExecutorService watcherExecutor = null;
+    private ScheduledFuture<?> watcherTask = null;
+    private ScheduledFuture<?> pendingRestartTask = null;
+    private volatile File watchedFile = null;
+    private volatile long watchedLastModified = 0L;
+    private final long WATCH_POLL_INTERVAL_MS = 1000L; // 1s
+    private final long RESTART_DEBOUNCE_MS = 600L; // 600ms debounce
+
     public boolean darkTheme = true;
     public Font editorFont;
 
     public App() {
-        setSize(800, 500);
+        setSize(1000, 650);
         setTitle("CodeLite");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
@@ -93,25 +107,28 @@ public class App extends JFrame {
         runButton.setFocusPainted(false);
         runButton.setOpaque(false);
 
-        // toggle play / pause
-        // toggle play / pause — only switch to pause if run actually started
+        // Run button action (toggle). Only switch to pause if run actually started.
         runButton.addActionListener(e -> {
             if (currentProcess != null) {
+                // user clicked Pause: stop run + watcher
                 stopRun();
+                stopFileWatcher();
                 if (playIcon != null)
                     runButton.setIcon(playIcon);
             } else {
-                boolean started = startRunForSelectedFile();
+                // attempt to start run - method returns true only if run started
+                boolean started = startRunForSelectedFile_andStartWatcher();
                 if (started) {
                     if (pauseIcon != null)
                         runButton.setIcon(pauseIcon);
                 } else {
-                    // ensure it remains play icon on failure/warning
                     if (playIcon != null)
                         runButton.setIcon(playIcon);
                 }
             }
         });
+
+        toolPanel.add(runButton);
 
         menuBar = new JMenuBar();
         settingsMenu = new JMenu("Settings", true);
@@ -155,22 +172,54 @@ public class App extends JFrame {
     }
 
     public void addComponent() {
-        toolPanel.add(runButton);
-
+        // project view components
         projectView.addComponent();
 
-        menuBar.add(settingsMenu);
+        // simple menu bar
+        JMenuBar menuBar = new JMenuBar();
+        JMenu settingsMenu = new JMenu("Settings");
+        JMenuItem newProjectItem = new JMenuItem("Open new Project");
+        JMenuItem closeProjectItem = new JMenuItem("Close project");
+        JMenuItem exitItem = new JMenuItem("Exit CodeLite");
+
+        newProjectItem.addActionListener(e -> {
+            projectView.getProjectTree().removeAll();
+            if (projectView.root != null)
+                projectView.root.removeAllChildren();
+            projectView.openProject();
+        });
+
+        closeProjectItem.addActionListener(e -> {
+            projectView.getProjectTree().removeAll();
+            if (projectView.root != null)
+                projectView.root.removeAllChildren();
+            projectView.projectFiles.clear();
+
+            setContentPane(welcomeView);
+            this.setSize(800, 500);
+            this.setLocationRelativeTo(null);
+        });
+
+        exitItem.addActionListener(e -> System.exit(0));
+
         settingsMenu.add(newProjectItem);
         settingsMenu.add(closeProjectItem);
+        settingsMenu.addSeparator();
         settingsMenu.add(exitItem);
-
-        this.add(rootPanel, BorderLayout.CENTER);
-        this.add(welcomeView);
+        menuBar.add(settingsMenu);
         setJMenuBar(menuBar);
+
+        // add main split pane
+        this.add(rootPanel, BorderLayout.CENTER);
+
+        // show welcome first (optional). Call launch() to show project + editor.
+        setContentPane(welcomeView);
+
+        // ensure editor placeholder state is set
+        editorView.showNoFileSelected();
 
         revalidate();
         repaint();
-
         setVisible(true);
     }
 
@@ -182,39 +231,27 @@ public class App extends JFrame {
         editorView.showNoFileSelected();
     }
 
-    private void ensureRunOutputDialog() {
-        if (runOutputDialog != null)
-            return;
+    /*
+     * Starts run for selected Java file and starts the file watcher for hot-reload.
+     * Returns true if run started, false otherwise.
+     */
 
-        runOutputArea = new JTextArea();
-        runOutputArea.setEditable(false);
-        runOutputArea.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 12));
-
-        JScrollPane scrollPane = new JScrollPane(runOutputArea);
-        scrollPane.setPreferredSize(new Dimension(800, 400));
-
-        runOutputDialog = new JDialog(this, "Run Output", false);
-        runOutputDialog.add(scrollPane);
-        runOutputDialog.pack();
-        runOutputDialog.setLocationRelativeTo(this);
-    }
-
-    private boolean startRunForSelectedFile() {
+    private boolean startRunForSelectedFile_andStartWatcher() {
         CustomNode node = projectView.getSelectedCustomNode();
-
         if (node == null || node.isDirectory || node.getFilePath() == null || !node.getFilePath().endsWith(".java")) {
-            JOptionPane.showMessageDialog(this, "Select a Java file to run");
-            // do NOT change the run button icon here — caller will keep it as play
+            JOptionPane.showMessageDialog(this, "Select a Java file to run", "No File Selected",
+                    JOptionPane.WARNING_MESSAGE);
             return false;
         }
 
-        try (FileWriter fw = new FileWriter(node.getFilePath())) {
+        // save current editor text before running
+
+        try (FileWriter fw = new FileWriter(new File(node.getFilePath()))) {
             fw.write(editorView.getText());
-            // clear dirty after explicit save
             if (editorView != null)
                 editorView.clearDirty();
-        } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, "Failed to save file before running:\n" + e.getMessage(), "Save Error",
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(this, "Failed to save file before running:\n" + ex.getMessage(), "Save Error",
                     JOptionPane.ERROR_MESSAGE);
             return false;
         }
@@ -223,64 +260,190 @@ public class App extends JFrame {
         runOutputArea.setText("");
         runOutputDialog.setVisible(true);
 
+        // start run
         startRun(node.getFilePath());
-        return true; // started
+
+        // start watcher for hot-reload (keep watching while running)
+        startFileWatcher(new File(node.getFilePath()));
+
+        return true;
+    }
+
+    // -------------------- file watcher (poll + debounce) --------------------
+    private synchronized void startFileWatcher(File file) {
+        // if same file already watched, just refresh lastModified and return
+        if (file == null)
+            return;
+
+        if (watchedFile != null && watchedFile.getAbsolutePath().equals(file.getAbsolutePath())) {
+            watchedLastModified = file.lastModified();
+            return;
+        }
+
+        stopFileWatcher(); // cleanup any existing watcher
+
+        watchedFile = file;
+        watchedLastModified = file.exists() ? file.lastModified() : 0L;
+        watcherExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "file-watcher-thread");
+            t.setDaemon(true);
+            return t;
+        });
+
+        watcherTask = watcherExecutor.scheduleAtFixedRate(() -> {
+            try {
+                if (watchedFile == null)
+                    return;
+                long lm = watchedFile.exists() ? watchedFile.lastModified() : 0L;
+                if (lm == 0L)
+                    return; // file missing
+                if (lm > watchedLastModified) {
+                    watchedLastModified = lm;
+                    // debounce restart a little: schedule restart after RESTART_DEBOUNCE_MS,
+                    // cancel previous pending restart if present.
+                    if (pendingRestartTask != null && !pendingRestartTask.isDone()) {
+                        pendingRestartTask.cancel(false);
+                    }
+                    pendingRestartTask = watcherExecutor.schedule(() -> {
+                        // on file change: stop current process and start a fresh run
+                        // ensure UI updates happen on EDT for icons
+                        try {
+                            stopRun(); // stops current process & worker
+                            // startRun will spawn a worker and run; it is safe to call from this thread
+                            startRun(watchedFile.getAbsolutePath());
+                            SwingUtilities.invokeLater(() -> {
+                                if (pauseIcon != null)
+                                    runButton.setIcon(pauseIcon);
+                            });
+                        } catch (Exception ex) {
+                            appendToRunOutput("Hot-reload failed: " + ex.getMessage() + "\n");
+                        }
+                    }, RESTART_DEBOUNCE_MS, TimeUnit.MILLISECONDS);
+                }
+            } catch (Exception ex) {
+                // swallow and log to output
+                appendToRunOutput("Watcher error: " + ex.getMessage() + "\n");
+            }
+        }, WATCH_POLL_INTERVAL_MS, WATCH_POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private synchronized void stopFileWatcher() {
+        watchedFile = null;
+        watchedLastModified = 0L;
+        if (pendingRestartTask != null) {
+            pendingRestartTask.cancel(true);
+            pendingRestartTask = null;
+        }
+        if (watcherTask != null) {
+            watcherTask.cancel(true);
+            watcherTask = null;
+        }
+        if (watcherExecutor != null) {
+            try {
+                watcherExecutor.shutdownNow();
+            } catch (Exception ignored) {
+            }
+            watcherExecutor = null;
+        }
+    }
+
+    // -------------------- run / process helpers --------------------
+    private void ensureRunOutputDialog() {
+        if (runOutputDialog != null)
+            return;
+
+        runOutputArea = new JTextArea();
+        runOutputArea.setEditable(false);
+        runOutputArea.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 12));
+        JScrollPane sp = new JScrollPane(runOutputArea);
+        sp.setPreferredSize(new Dimension(800, 400));
+
+        runOutputDialog = new JDialog(this, "Run Output", false);
+        runOutputDialog.getContentPane().setLayout(new BorderLayout());
+        runOutputDialog.getContentPane().add(sp, BorderLayout.CENTER);
+        runOutputDialog.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
+        runOutputDialog.pack();
+        runOutputDialog.setLocationRelativeTo(this);
     }
 
     private void startRun(String javaFilePath) {
-        stopRun();
+        stopRun(); // ensure previous stopped
 
         runWorker = new SwingWorker<>() {
             @Override
             protected Void doInBackground() throws Exception {
-                File file = new File(javaFilePath);
-                String dir = file.getParent();
+                File javaFile = new File(javaFilePath);
+                String parentDir = javaFile.getParentFile().getAbsolutePath();
 
-                publish("Compiling...\n");
-                Process compile = new ProcessBuilder("javac", file.getName())
-                        .directory(new File(dir))
-                        .redirectErrorStream(true)
-                        .start();
+                publish("Compiling: " + javaFile.getName() + "\n");
+                ProcessBuilder compilePb = new ProcessBuilder("javac", javaFile.getName());
+                compilePb.directory(new File(parentDir));
+                compilePb.redirectErrorStream(true);
+                Process compileProcess = compilePb.start();
 
-                currentProcess = compile;
-                compile.waitFor();
-
-                if (compile.exitValue() != 0) {
-                    publish("Compilation failed\n");
-                    return null;
-                }
-
-                String className = file.getName().replace(".java", "");
-                publish("Running...\n");
-
-                Process run = new ProcessBuilder("java", className)
-                        .directory(new File(dir))
-                        .redirectErrorStream(true)
-                        .start();
-
-                currentProcess = run;
-
-                try (BufferedReader br = new BufferedReader(new InputStreamReader(run.getInputStream()))) {
+                currentProcess = compileProcess;
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(compileProcess.getInputStream()))) {
                     String line;
                     while ((line = br.readLine()) != null) {
                         publish(line + "\n");
                     }
                 }
+                int compileExit = compileProcess.waitFor();
+                currentProcess = null;
 
-                run.waitFor();
+                if (compileExit != 0) {
+                    publish("Compilation failed (exit " + compileExit + ")\n");
+                    return null;
+                }
+                publish("Compilation succeeded.\n");
+
+                // detect package if present
+                String className = javaFile.getName().replaceAll("\\.java$", "");
+                String packageName = null;
+                try (Scanner sc = new Scanner(javaFile)) {
+                    while (sc.hasNextLine()) {
+                        String l = sc.nextLine().trim();
+                        if (l.startsWith("package ")) {
+                            packageName = l.substring(8).replace(";", "").trim();
+                            break;
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+                String fqName = (packageName != null && !packageName.isEmpty()) ? (packageName + "." + className)
+                        : className;
+
+                publish("Running: java -cp " + parentDir + " " + fqName + "\n");
+                ProcessBuilder runPb = new ProcessBuilder("java", "-cp", parentDir, fqName);
+                runPb.directory(new File(parentDir));
+                runPb.redirectErrorStream(true);
+                Process runProcess = runPb.start();
+
+                currentProcess = runProcess;
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(runProcess.getInputStream()))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        publish(line + "\n");
+                    }
+                }
+                int runExit = runProcess.waitFor();
+                currentProcess = null;
+                publish("Process exited with code " + runExit + "\n");
                 return null;
             }
 
             @Override
             protected void process(java.util.List<String> chunks) {
                 for (String s : chunks)
-                    runOutputArea.append(s);
+                    appendToRunOutput(s);
             }
 
             @Override
             protected void done() {
-                runButton.setIcon(playIcon);
+                if (runButton != null && playIcon != null)
+                    runButton.setIcon(playIcon);
                 currentProcess = null;
+                runWorker = null;
             }
         };
 
@@ -288,10 +451,28 @@ public class App extends JFrame {
     }
 
     private void stopRun() {
-        if (currentProcess != null) {
-            currentProcess.destroyForcibly();
-            currentProcess = null;
+        if (runWorker != null) {
+            runWorker.cancel(true);
+            runWorker = null;
         }
+        if (currentProcess != null) {
+            try {
+                currentProcess.destroyForcibly();
+            } catch (Exception ignored) {
+            } finally {
+                currentProcess = null;
+            }
+        }
+        appendToRunOutput("\nProcess stopped by user.\n");
+    }
+
+    private void appendToRunOutput(String s) {
+        if (runOutputArea == null)
+            return;
+        SwingUtilities.invokeLater(() -> {
+            runOutputArea.append(s);
+            runOutputArea.setCaretPosition(runOutputArea.getDocument().getLength());
+        });
     }
 
     public static void main(String[] args) {
