@@ -46,7 +46,6 @@ public class ProjectView extends JPanel {
         projectTree = new JTree(root);
         projectTree.setFont(new Font(FlatInterFont.FAMILY, Font.PLAIN, 16));
 
-        // spacing to look nicer (my-1 equivalent)
         projectTree.setRowHeight(28);
 
         projectScrollPane = new JScrollPane(projectTree);

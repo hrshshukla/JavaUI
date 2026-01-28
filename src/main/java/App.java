@@ -22,7 +22,6 @@ public class App extends JFrame {
     public JPanel rightSplitPanel;
     public JPanel toolPanel;
 
-
     public JButton runButton;
     private Process currentProcess = null;
     private javax.swing.SwingWorker<Void, String> runWorker = null;
@@ -73,7 +72,8 @@ public class App extends JFrame {
         rootPanel = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, projectView, rightSplitPanel);
 
         rightSplitPanel.setLayout(new BorderLayout());
-        toolPanel.setLayout(new FlowLayout(FlowLayout.CENTER));
+        toolPanel.setLayout(new FlowLayout(FlowLayout.RIGHT, 0, 0)); // RIGHT alignment
+        toolPanel.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
         rightSplitPanel.add(editorView.getContentPanel(), BorderLayout.CENTER);
         rightSplitPanel.add(toolPanel, BorderLayout.NORTH);
@@ -85,17 +85,31 @@ public class App extends JFrame {
 
         runButton = new JButton();
         runButton.setIcon(playIcon);
+        runButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
         runButton.setFocusable(false);
         runButton.setToolTipText("Run / Stop");
+        runButton.setContentAreaFilled(false);
+        runButton.setBorderPainted(false);
+        runButton.setFocusPainted(false);
+        runButton.setOpaque(false);
 
         // toggle play / pause
+        // toggle play / pause — only switch to pause if run actually started
         runButton.addActionListener(e -> {
             if (currentProcess != null) {
                 stopRun();
-                runButton.setIcon(playIcon);
+                if (playIcon != null)
+                    runButton.setIcon(playIcon);
             } else {
-                startRunForSelectedFile();
-                runButton.setIcon(pauseIcon);
+                boolean started = startRunForSelectedFile();
+                if (started) {
+                    if (pauseIcon != null)
+                        runButton.setIcon(pauseIcon);
+                } else {
+                    // ensure it remains play icon on failure/warning
+                    if (playIcon != null)
+                        runButton.setIcon(playIcon);
+                }
             }
         });
 
@@ -185,21 +199,24 @@ public class App extends JFrame {
         runOutputDialog.setLocationRelativeTo(this);
     }
 
-    private void startRunForSelectedFile() {
+    private boolean startRunForSelectedFile() {
         CustomNode node = projectView.getSelectedCustomNode();
 
-        if (node == null || node.isDirectory || !node.getFilePath().endsWith(".java")) {
-            JOptionPane.showMessageDialog(null, "Select a Java file to run");
-            runButton.setIcon(playIcon);
-            return;
+        if (node == null || node.isDirectory || node.getFilePath() == null || !node.getFilePath().endsWith(".java")) {
+            JOptionPane.showMessageDialog(this, "Select a Java file to run");
+            // do NOT change the run button icon here — caller will keep it as play
+            return false;
         }
 
         try (FileWriter fw = new FileWriter(node.getFilePath())) {
             fw.write(editorView.getText());
+            // clear dirty after explicit save
+            if (editorView != null)
+                editorView.clearDirty();
         } catch (IOException e) {
-            JOptionPane.showMessageDialog(null, "Failed to save file");
-            runButton.setIcon(playIcon);
-            return;
+            JOptionPane.showMessageDialog(this, "Failed to save file before running:\n" + e.getMessage(), "Save Error",
+                    JOptionPane.ERROR_MESSAGE);
+            return false;
         }
 
         ensureRunOutputDialog();
@@ -207,6 +224,7 @@ public class App extends JFrame {
         runOutputDialog.setVisible(true);
 
         startRun(node.getFilePath());
+        return true; // started
     }
 
     private void startRun(String javaFilePath) {
@@ -278,6 +296,15 @@ public class App extends JFrame {
 
     public static void main(String[] args) {
         FlatMacDarkLaf.setup();
+
+        UIManager.put("Component.focusColor", new Color(120, 120, 120)); // main focus ring
+        UIManager.put("Component.focusedBorderColor", new Color(120, 120, 120));
+        UIManager.put("Component.focusedBorderWidth", 1);
+
+        UIManager.put("TextComponent.focusedBorderColor", new Color(120, 120, 120));
+
+        UIManager.put("Tree.selectionBorderColor", new Color(120, 120, 120));
+
         FlatJetBrainsMonoFont.install();
         FlatInterFont.install();
 
