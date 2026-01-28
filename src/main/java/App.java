@@ -35,6 +35,9 @@ public class App extends JFrame {
     private ImageIcon playIcon;
     private ImageIcon pauseIcon;
 
+    private RotatingIconLabel refreshIconLabel;
+    private ImageIcon refreshIcon;
+
     public String os = System.getProperty("os.name").toLowerCase();
     public String currentFileParentPath;
     public ProcessBuilder pb;
@@ -69,6 +72,11 @@ public class App extends JFrame {
     }
 
     public void init() {
+
+        playIcon = new ImageIcon(App.class.getResource("/icons/playIcon.png"));
+        pauseIcon = new ImageIcon(App.class.getResource("/icons/pauseIcon.png"));
+        refreshIcon = new ImageIcon(App.class.getResource("/icons/refreshIcon.png"));
+        refreshIconLabel = new RotatingIconLabel(refreshIcon);
         editorFont = new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 18);
 
         welcomeView = new WelcomeView(this);
@@ -87,15 +95,13 @@ public class App extends JFrame {
 
         rightSplitPanel.setLayout(new BorderLayout());
         toolPanel.setLayout(new FlowLayout(FlowLayout.RIGHT, 0, 0)); // RIGHT alignment
+
         toolPanel.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
         rightSplitPanel.add(editorView.getContentPanel(), BorderLayout.CENTER);
         rightSplitPanel.add(toolPanel, BorderLayout.NORTH);
 
         currentFileParentPath = projectView.projectPath;
-
-        playIcon = new ImageIcon(App.class.getResource("/icons/playIcon.png"));
-        pauseIcon = new ImageIcon(App.class.getResource("/icons/pauseIcon.png"));
 
         runButton = new JButton();
         runButton.setIcon(playIcon);
@@ -128,6 +134,7 @@ public class App extends JFrame {
             }
         });
 
+        toolPanel.add(refreshIconLabel);
         toolPanel.add(runButton);
 
         menuBar = new JMenuBar();
@@ -156,12 +163,17 @@ public class App extends JFrame {
 
         autoSave = true;
 
-        autoSaveTimer = new Timer(1000, e -> {
+        autoSaveTimer = new Timer(2000, e -> {
             if (projectView != null && projectView.getSelectedCustomNode() != null) {
                 CustomNode node = projectView.getSelectedCustomNode();
 
                 if (!node.isDirectory && editorView != null && editorView.isDirty()) {
                     projectView.saveFile();
+
+                    // 🔄 rotate refresh icon once on autosave
+                    if (refreshIconLabel != null) {
+                        refreshIconLabel.rotateOnce();
+                    }
                 }
             }
         });
