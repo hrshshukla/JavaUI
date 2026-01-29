@@ -6,24 +6,12 @@ import java.util.Scanner;
 import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 
-/**
- * JavaRunManager
- *
- * Responsibilities:
- *  - compile (.java -> .class) using javac
- *  - run class using java
- *  - capture output/errors and forward them to the provided appendOutput consumer
- *  - manage process / SwingWorker lifecycle and stop/kill processes on request
- *  - notify caller via onFinish runnable when the run ends (so UI icons can be updated)
- *
- * This class is intentionally UI-agnostic: it accepts callbacks for appending output and for notifying run completion.
- */
+
 public class JavaRunManager {
 
-    private final Consumer<String> appendOutput; // app :: appendToRunOutput(String)
-    private final Runnable onFinish;            // app :: set play icon or other UI update
+    private final Consumer<String> appendOutput;
+    private final Runnable onFinish;            
 
-    // Internal state
     private volatile Process currentProcess = null;
     private SwingWorker<Void, String> runWorker = null;
 
@@ -32,12 +20,8 @@ public class JavaRunManager {
         this.onFinish = onFinish;
     }
 
-    /**
-     * Start compile+run for the provided javaFilePath.
-     * This method will stop any existing run first.
-     */
     public synchronized void startRun(String javaFilePath) {
-        stopRun(); // ensure previous stopped
+        stopRun();
 
         runWorker = new SwingWorker<>() {
             @Override
@@ -67,7 +51,6 @@ public class JavaRunManager {
                 }
                 publish("Compilation succeeded.\n");
 
-                // detect package if present
                 String className = javaFile.getName().replaceAll("\\.java$", "");
                 String packageName = null;
                 try (Scanner sc = new Scanner(javaFile)) {
@@ -110,7 +93,6 @@ public class JavaRunManager {
 
             @Override
             protected void done() {
-                // Ensure UI can set icon back to play
                 try {
                     if (onFinish != null) onFinish.run();
                 } catch (CancellationException ignored) {
@@ -126,7 +108,6 @@ public class JavaRunManager {
         runWorker.execute();
     }
 
-    /** Stop the current run / worker and kill process */
     public synchronized void stopRun() {
         if (runWorker != null) {
             try {
@@ -145,13 +126,11 @@ public class JavaRunManager {
         safeAppend("\nProcess stopped by user.\n");
     }
 
-    /** Append to output using the provided callback, on EDT. */
     public void safeAppend(String s) {
         if (appendOutput == null) return;
         SwingUtilities.invokeLater(() -> appendOutput.accept(s));
     }
 
-    /** Whether something is currently running. */
     public boolean isRunning() {
         return currentProcess != null || (runWorker != null && !runWorker.isDone());
     }

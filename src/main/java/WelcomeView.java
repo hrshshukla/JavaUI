@@ -35,6 +35,7 @@ public class WelcomeView extends JPanel implements ComponentListener {
         mottoLabel.setHorizontalAlignment(SwingConstants.CENTER);
 
         openProjectButton = new JButton("Open Project");
+        openProjectButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
         openProjectButton.setForeground(Color.WHITE);
         openProjectButton.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 18));
 

@@ -1,4 +1,5 @@
 import com.formdev.flatlaf.fonts.inter.FlatInterFont;
+import com.formdev.flatlaf.fonts.jetbrains_mono.FlatJetBrainsMonoFont;
 
 import javax.swing.*;
 import javax.swing.tree.DefaultMutableTreeNode;
@@ -44,7 +45,7 @@ public class ProjectView extends JPanel {
         root = new CustomNode("Project", null, projectPath);
         root.isDirectory = true;
         projectTree = new JTree(root);
-        projectTree.setFont(new Font(FlatInterFont.FAMILY, Font.PLAIN, 16));
+        projectTree.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 16));
 
         projectTree.setRowHeight(28);
 
@@ -166,7 +167,6 @@ public class ProjectView extends JPanel {
         SwingUtilities.invokeLater(() -> projectTree.expandRow(0));
     }
 
-
     public void openDirectory(File inputFile) {
         // clear previous children of root to avoid duplicates on multiple opens
         root.removeAllChildren();
@@ -249,9 +249,15 @@ public class ProjectView extends JPanel {
         popupMenu = new JPopupMenu();
 
         JMenuItem addFileItem = new JMenuItem("New File");
+
         JMenuItem addFolderItem = new JMenuItem("New Folder");
         JMenuItem renameItem = new JMenuItem("Rename");
         JMenuItem deleteItem = new JMenuItem("Delete");
+
+        addFileItem.setFont(new Font("JetBrains Mono", Font.PLAIN, 16));
+        addFolderItem.setFont(new Font("JetBrains Mono", Font.PLAIN, 16));
+        deleteItem.setFont(new Font("JetBrains Mono", Font.PLAIN, 16));
+        renameItem.setFont(new Font("JetBrains Mono", Font.PLAIN, 16));
 
         addFileItem.addActionListener(e -> createFile(false));
         addFolderItem.addActionListener(e -> createFile(true));

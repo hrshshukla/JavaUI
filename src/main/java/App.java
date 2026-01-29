@@ -1,5 +1,4 @@
 
-// Updated App.java
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Cursor;
@@ -7,12 +6,9 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Image;
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.util.Scanner;
 
 import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
@@ -28,7 +24,6 @@ import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
-import javax.swing.SwingWorker;
 import javax.swing.Timer;
 import javax.swing.UIManager;
 
@@ -56,9 +51,7 @@ public class App extends JFrame {
     private ImageIcon playIcon;
     private ImageIcon pauseIcon;
 
-    private JPanel runOutputPanel;
-    private JTextArea runOutputArea;
-    private JScrollPane runOutputScroll;
+    private RunOutputPanel runOutputPanelComponent;
     private JSplitPane editorRunSplit;
 
     private RotatingIconLabel refreshIconLabel;
@@ -115,14 +108,22 @@ public class App extends JFrame {
 
         toolPanel.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
-        // create embedded run output panel and vertical split
-        ensureRunOutputPanel(); // creates runOutputPanel & area if not present
+        // create the run output component (replaces old ensureRunOutputPanel)
+        runOutputPanelComponent = new RunOutputPanel();
 
         // split editor (top) and run output (bottom)
         editorRunSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
-                editorView.getContentPanel(), runOutputPanel);
+                editorView.getContentPanel(), runOutputPanelComponent.getPanel());
         editorRunSplit.setResizeWeight(0.75); // editor gets 75% of space by default
         editorRunSplit.setDividerSize(6);
+
+        // wire the hide button inside RunOutputPanel to collapse the split
+        runOutputPanelComponent.setHideCallback(() -> {
+            if (editorRunSplit != null) {
+                // move divider almost all the way down (hide the output)
+                editorRunSplit.setDividerLocation(1.0);
+            }
+        });
 
         rightSplitPanel.add(editorRunSplit, BorderLayout.CENTER);
 
@@ -192,27 +193,6 @@ public class App extends JFrame {
 
         toolPanel.add(runButton);
 
-        newProjectItem = new JMenuItem("Open new Project");
-        closeProjectItem = new JMenuItem("Close project");
-
-        exitItem = new JMenuItem("Exit CodeLite");
-
-        newProjectItem.addActionListener(e -> {
-            projectView.getProjectTree().removeAll();
-            projectView.root.removeAllChildren();
-            projectView.openProject();
-        });
-
-        closeProjectItem.addActionListener(e -> {
-            projectView.getProjectTree().removeAll();
-            projectView.root.removeAllChildren();
-            projectView.projectFiles.clear();
-
-            setContentPane(welcomeView);
-            this.setSize(800, 500);
-            this.setLocationRelativeTo(null);
-        });
-
         autoSave = true;
 
         autoSaveTimer = new Timer(2000, e -> {
@@ -231,18 +211,18 @@ public class App extends JFrame {
         });
 
         autoSaveTimer.start();
-
-        exitItem.addActionListener(e -> System.exit(0));
     }
 
     public void addComponent() {
         // project view components
         projectView.addComponent();
 
-        // simple menu bar
+        // menu bar
         JMenuBar menuBar = new JMenuBar();
         JMenu settingsMenu = new JMenu("Settings");
-        settingsMenu.setFont(new Font(FlatInterFont.FAMILY, Font.PLAIN, 18));
+        settingsMenu.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        settingsMenu.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 18));
+        
         if (settingIcon != null) {
             Image img = settingIcon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH);
             settingsMenu.setIcon(new ImageIcon(img));
@@ -253,9 +233,10 @@ public class App extends JFrame {
         JMenuItem closeProjectItem = new JMenuItem("Close project");
         JMenuItem exitItem = new JMenuItem("Exit CodeLite");
 
-        newProjectItem.setFont(new Font(FlatInterFont.FAMILY, Font.PLAIN, 15));
-        closeProjectItem.setFont(new Font(FlatInterFont.FAMILY, Font.PLAIN, 15));
-        exitItem.setFont(new Font(FlatInterFont.FAMILY, Font.PLAIN, 15));
+        newProjectItem.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 15));
+        closeProjectItem.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 15));
+        exitItem.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 15));
+        
 
         newProjectItem.addActionListener(e -> {
             projectView.getProjectTree().removeAll();
@@ -284,13 +265,13 @@ public class App extends JFrame {
         menuBar.add(settingsMenu);
         setJMenuBar(menuBar);
 
-        // add main split pane
+        // split panel
         this.add(rootPanel, BorderLayout.CENTER);
 
-        // show welcome first (optional). Call launch() to show project + editor.
+        // show welcome 
         setContentPane(welcomeView);
 
-        // ensure editor placeholder state is set
+        // editor placeholder
         editorView.showNoFileSelected();
 
         revalidate();
@@ -306,11 +287,6 @@ public class App extends JFrame {
         editorView.showNoFileSelected();
     }
 
-    /*
-     * Starts run for selected Java file and starts the file watcher for hot-reload.
-     * Returns true if run started, false otherwise.
-     */
-
     private boolean startRunForSelectedFile_andStartWatcher() {
         CustomNode node = projectView.getSelectedCustomNode();
         if (node == null || node.isDirectory || node.getFilePath() == null || !node.getFilePath().endsWith(".java")) {
@@ -319,7 +295,6 @@ public class App extends JFrame {
             return false;
         }
 
-        // save current editor text before running
 
         try (FileWriter fw = new FileWriter(new File(node.getFilePath()))) {
             fw.write(editorView.getText());
@@ -331,10 +306,12 @@ public class App extends JFrame {
             return false;
         }
 
-        ensureRunOutputPanel();
-        runOutputArea.setText("");
 
-        // expand the split so run output becomes visible (do this on EDT)
+        if (runOutputPanelComponent == null) {
+            runOutputPanelComponent = new RunOutputPanel();
+        }
+        runOutputPanelComponent.clear();
+
         SwingUtilities.invokeLater(() -> {
             if (editorRunSplit != null) {
                 int h = editorRunSplit.getHeight() > 0 ? editorRunSplit.getHeight() : App.this.getHeight();
@@ -352,46 +329,6 @@ public class App extends JFrame {
         return true;
     }
 
-    // -------------------- run / process helpers --------------------
-    private void ensureRunOutputPanel() {
-        if (runOutputPanel != null)
-            return;
-
-        runOutputArea = new JTextArea();
-        runOutputArea.setEditable(false);
-        runOutputArea.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 12));
-        runOutputScroll = new JScrollPane(runOutputArea);
-        runOutputScroll.setPreferredSize(new Dimension(800, 200));
-
-        // small header for the run panel (optional) with a close/hide button
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
-        JLabel title = new JLabel("Run Output");
-        title.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 12));
-        JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-        rightButtons.setOpaque(false);
-
-        JButton hideBtn = new JButton("Hide");
-        hideBtn.setFocusable(false);
-        hideBtn.addActionListener(e -> {
-            // collapse/hide the run panel by moving divider to bottom
-            if (editorRunSplit != null) {
-                editorRunSplit.setDividerLocation(1.0); // nearly fully down
-            }
-        });
-
-        rightButtons.add(hideBtn);
-
-        header.add(title, BorderLayout.WEST);
-        header.add(rightButtons, BorderLayout.EAST);
-
-        runOutputPanel = new JPanel(new BorderLayout());
-        runOutputPanel.add(header, BorderLayout.NORTH);
-        runOutputPanel.add(runOutputScroll, BorderLayout.CENTER);
-    }
-
-    // __________________________________________
-
     private void startRun(String javaFilePath) {
         javaRunManager.startRun(javaFilePath);
     }
@@ -403,24 +340,21 @@ public class App extends JFrame {
     }
 
     private void appendToRunOutput(String s) {
-        if (runOutputArea == null)
+        if (runOutputPanelComponent == null)
             return;
-        SwingUtilities.invokeLater(() -> {
-            runOutputArea.append(s);
-            runOutputArea.setCaretPosition(runOutputArea.getDocument().getLength());
-        });
+        runOutputPanelComponent.append(s);
     }
 
     public static void main(String[] args) {
         FlatMacDarkLaf.setup();
 
-        UIManager.put("Component.focusColor", new Color(120, 120, 120)); // main focus ring
-        UIManager.put("Component.focusedBorderColor", new Color(120, 120, 120));
+        UIManager.put("Component.focusColor", new Color(90, 90, 90)); // main focus ring
+        UIManager.put("Component.focusedBorderColor", new Color(90, 90, 90));
         UIManager.put("Component.focusedBorderWidth", 1);
 
-        UIManager.put("TextComponent.focusedBorderColor", new Color(120, 120, 120));
+        UIManager.put("TextComponent.focusedBorderColor", new Color(90, 90, 90));
 
-        UIManager.put("Tree.selectionBorderColor", new Color(120, 120, 120));
+        UIManager.put("Tree.selectionBorderColor", new Color(90, 90, 90));
 
         FlatJetBrainsMonoFont.install();
         FlatInterFont.install();
