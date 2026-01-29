@@ -44,6 +44,7 @@ public class App extends JFrame {
     public EditorView editorView;
 
     private HotReloadManager hotReloadManager;
+    private JavaRunManager javaRunManager;
 
     public JPanel rightSplitPanel;
     public JPanel toolPanel;
@@ -140,6 +141,7 @@ public class App extends JFrame {
         runButton.setOpaque(false);
 
         // create hotReloadManager with callbacks that use App's methods
+
         hotReloadManager = new HotReloadManager(
                 (filePath) -> startRun(filePath), // startRun(String)
                 () -> stopRun(), // stopRun()
@@ -151,6 +153,19 @@ public class App extends JFrame {
                 1000L, // watch poll interval (ms) - same as before
                 600L // debounce (ms)
         );
+
+        // Create JavaRunManager and pass callbacks:
+        // - appendToRunOutput: App::appendToRunOutput
+        // - onFinish: restore play icon on UI thread
+        javaRunManager = new JavaRunManager(
+                (msg) -> appendToRunOutput(msg),
+                () -> {
+                    SwingUtilities.invokeLater(() -> {
+                        if (runButton != null && playIcon != null) {
+                            runButton.setIcon(playIcon);
+                        }
+                    });
+                });
 
         // Run button action (toggle). Only switch to pause if run actually started.
         runButton.addActionListener(e -> {
@@ -176,7 +191,6 @@ public class App extends JFrame {
         toolPanel.add(refreshIconLabel);
 
         toolPanel.add(runButton);
-
 
         newProjectItem = new JMenuItem("Open new Project");
         closeProjectItem = new JMenuItem("Close project");
@@ -238,6 +252,10 @@ public class App extends JFrame {
         JMenuItem newProjectItem = new JMenuItem("Open new Project");
         JMenuItem closeProjectItem = new JMenuItem("Close project");
         JMenuItem exitItem = new JMenuItem("Exit CodeLite");
+
+        newProjectItem.setFont(new Font(FlatInterFont.FAMILY, Font.PLAIN, 15));
+        closeProjectItem.setFont(new Font(FlatInterFont.FAMILY, Font.PLAIN, 15));
+        exitItem.setFont(new Font(FlatInterFont.FAMILY, Font.PLAIN, 15));
 
         newProjectItem.addActionListener(e -> {
             projectView.getProjectTree().removeAll();
@@ -375,103 +393,13 @@ public class App extends JFrame {
     // __________________________________________
 
     private void startRun(String javaFilePath) {
-        stopRun(); // ensure previous stopped
-
-        runWorker = new SwingWorker<>() {
-            @Override
-            protected Void doInBackground() throws Exception {
-                File javaFile = new File(javaFilePath);
-                String parentDir = javaFile.getParentFile().getAbsolutePath();
-
-                publish("Compiling: " + javaFile.getName() + "\n");
-                ProcessBuilder compilePb = new ProcessBuilder("javac", javaFile.getName());
-                compilePb.directory(new File(parentDir));
-                compilePb.redirectErrorStream(true);
-                Process compileProcess = compilePb.start();
-
-                currentProcess = compileProcess;
-                try (BufferedReader br = new BufferedReader(new InputStreamReader(compileProcess.getInputStream()))) {
-                    String line;
-                    while ((line = br.readLine()) != null) {
-                        publish(line + "\n");
-                    }
-                }
-                int compileExit = compileProcess.waitFor();
-                currentProcess = null;
-
-                if (compileExit != 0) {
-                    publish("Compilation failed (exit " + compileExit + ")\n");
-                    return null;
-                }
-                publish("Compilation succeeded.\n");
-
-                // detect package if present
-                String className = javaFile.getName().replaceAll("\\.java$", "");
-                String packageName = null;
-                try (Scanner sc = new Scanner(javaFile)) {
-                    while (sc.hasNextLine()) {
-                        String l = sc.nextLine().trim();
-                        if (l.startsWith("package ")) {
-                            packageName = l.substring(8).replace(";", "").trim();
-                            break;
-                        }
-                    }
-                } catch (Exception ignored) {
-                }
-                String fqName = (packageName != null && !packageName.isEmpty()) ? (packageName + "." + className)
-                        : className;
-
-                publish("Running: java -cp " + parentDir + " " + fqName + "\n");
-                ProcessBuilder runPb = new ProcessBuilder("java", "-cp", parentDir, fqName);
-                runPb.directory(new File(parentDir));
-                runPb.redirectErrorStream(true);
-                Process runProcess = runPb.start();
-
-                currentProcess = runProcess;
-                try (BufferedReader br = new BufferedReader(new InputStreamReader(runProcess.getInputStream()))) {
-                    String line;
-                    while ((line = br.readLine()) != null) {
-                        publish(line + "\n");
-                    }
-                }
-                int runExit = runProcess.waitFor();
-                currentProcess = null;
-                publish("Process exited with code " + runExit + "\n");
-                return null;
-            }
-
-            @Override
-            protected void process(java.util.List<String> chunks) {
-                for (String s : chunks)
-                    appendToRunOutput(s);
-            }
-
-            @Override
-            protected void done() {
-                if (runButton != null && playIcon != null)
-                    runButton.setIcon(playIcon);
-                currentProcess = null;
-                runWorker = null;
-            }
-        };
-
-        runWorker.execute();
+        javaRunManager.startRun(javaFilePath);
     }
 
     private void stopRun() {
-        if (runWorker != null) {
-            runWorker.cancel(true);
-            runWorker = null;
+        if (javaRunManager != null) {
+            javaRunManager.stopRun();
         }
-        if (currentProcess != null) {
-            try {
-                currentProcess.destroyForcibly();
-            } catch (Exception ignored) {
-            } finally {
-                currentProcess = null;
-            }
-        }
-        appendToRunOutput("\nProcess stopped by user.\n");
     }
 
     private void appendToRunOutput(String s) {
