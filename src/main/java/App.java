@@ -1,21 +1,40 @@
 
 // Updated App.java
-import com.formdev.flatlaf.fonts.inter.FlatInterFont;
-import com.formdev.flatlaf.fonts.jetbrains_mono.FlatJetBrainsMonoFont;
-import com.formdev.flatlaf.themes.FlatMacDarkLaf;
-
-import javax.swing.*;
-import java.awt.*;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.Image;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.Scanner;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+
+import javax.swing.BorderFactory;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JTextArea;
+import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
+import javax.swing.Timer;
+import javax.swing.UIManager;
+
+import com.formdev.flatlaf.fonts.inter.FlatInterFont;
+import com.formdev.flatlaf.fonts.jetbrains_mono.FlatJetBrainsMonoFont;
+import com.formdev.flatlaf.themes.FlatMacDarkLaf;
 
 public class App extends JFrame {
 
@@ -23,6 +42,8 @@ public class App extends JFrame {
     public JSplitPane rootPanel;
     public ProjectView projectView;
     public EditorView editorView;
+
+    private HotReloadManager hotReloadManager;
 
     public JPanel rightSplitPanel;
     public JPanel toolPanel;
@@ -47,22 +68,12 @@ public class App extends JFrame {
     public String currentFileParentPath;
     public ProcessBuilder pb;
 
-    public JMenuBar menuBar;
     public JMenuItem closeProjectItem, newProjectItem,
             pythonItem, autoSaveItem,
             exitItem;
 
     public boolean autoSave = true;
     public Timer autoSaveTimer;
-
-    // file watcher (hot-reload)
-    private ScheduledExecutorService watcherExecutor = null;
-    private ScheduledFuture<?> watcherTask = null;
-    private ScheduledFuture<?> pendingRestartTask = null;
-    private volatile File watchedFile = null;
-    private volatile long watchedLastModified = 0L;
-    private final long WATCH_POLL_INTERVAL_MS = 1000L; // 1s
-    private final long RESTART_DEBOUNCE_MS = 600L; // 600ms debounce
 
     public boolean darkTheme = true;
     public Font editorFont;
@@ -128,12 +139,25 @@ public class App extends JFrame {
         runButton.setFocusPainted(false);
         runButton.setOpaque(false);
 
+        // create hotReloadManager with callbacks that use App's methods
+        hotReloadManager = new HotReloadManager(
+                (filePath) -> startRun(filePath), // startRun(String)
+                () -> stopRun(), // stopRun()
+                (msg) -> appendToRunOutput(msg), // appendToRunOutput(String)
+                () -> {
+                    if (pauseIcon != null)
+                        runButton.setIcon(pauseIcon);
+                }, // set pause icon
+                1000L, // watch poll interval (ms) - same as before
+                600L // debounce (ms)
+        );
+
         // Run button action (toggle). Only switch to pause if run actually started.
         runButton.addActionListener(e -> {
             if (currentProcess != null) {
                 // user clicked Pause: stop run + watcher
                 stopRun();
-                stopFileWatcher();
+                hotReloadManager.stopWatching();
                 if (playIcon != null)
                     runButton.setIcon(playIcon);
             } else {
@@ -153,7 +177,6 @@ public class App extends JFrame {
 
         toolPanel.add(runButton);
 
-        menuBar = new JMenuBar();
 
         newProjectItem = new JMenuItem("Open new Project");
         closeProjectItem = new JMenuItem("Close project");
@@ -306,87 +329,9 @@ public class App extends JFrame {
         startRun(node.getFilePath());
 
         // start watcher for hot-reload (keep watching while running)
-        startFileWatcher(new File(node.getFilePath()));
+        hotReloadManager.startWatching(new File(node.getFilePath()));
 
         return true;
-    }
-
-    // -------------------- file watcher (poll + debounce) --------------------
-    private synchronized void startFileWatcher(File file) {
-        // if same file already watched, just refresh lastModified and return
-        if (file == null)
-            return;
-
-        if (watchedFile != null && watchedFile.getAbsolutePath().equals(file.getAbsolutePath())) {
-            watchedLastModified = file.lastModified();
-            return;
-        }
-
-        stopFileWatcher(); // cleanup any existing watcher
-
-        watchedFile = file;
-        watchedLastModified = file.exists() ? file.lastModified() : 0L;
-        watcherExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "file-watcher-thread");
-            t.setDaemon(true);
-            return t;
-        });
-
-        watcherTask = watcherExecutor.scheduleAtFixedRate(() -> {
-            try {
-                if (watchedFile == null)
-                    return;
-                long lm = watchedFile.exists() ? watchedFile.lastModified() : 0L;
-                if (lm == 0L)
-                    return; // file missing
-                if (lm > watchedLastModified) {
-                    watchedLastModified = lm;
-                    // debounce restart a little: schedule restart after RESTART_DEBOUNCE_MS,
-                    // cancel previous pending restart if present.
-                    if (pendingRestartTask != null && !pendingRestartTask.isDone()) {
-                        pendingRestartTask.cancel(false);
-                    }
-                    pendingRestartTask = watcherExecutor.schedule(() -> {
-                        // on file change: stop current process and start a fresh run
-                        // ensure UI updates happen on EDT for icons
-                        try {
-                            stopRun(); // stops current process & worker
-                            // startRun will spawn a worker and run; it is safe to call from this thread
-                            startRun(watchedFile.getAbsolutePath());
-                            SwingUtilities.invokeLater(() -> {
-                                if (pauseIcon != null)
-                                    runButton.setIcon(pauseIcon);
-                            });
-                        } catch (Exception ex) {
-                            appendToRunOutput("Hot-reload failed: " + ex.getMessage() + "\n");
-                        }
-                    }, RESTART_DEBOUNCE_MS, TimeUnit.MILLISECONDS);
-                }
-            } catch (Exception ex) {
-                // swallow and log to output
-                appendToRunOutput("Watcher error: " + ex.getMessage() + "\n");
-            }
-        }, WATCH_POLL_INTERVAL_MS, WATCH_POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
-    }
-
-    private synchronized void stopFileWatcher() {
-        watchedFile = null;
-        watchedLastModified = 0L;
-        if (pendingRestartTask != null) {
-            pendingRestartTask.cancel(true);
-            pendingRestartTask = null;
-        }
-        if (watcherTask != null) {
-            watcherTask.cancel(true);
-            watcherTask = null;
-        }
-        if (watcherExecutor != null) {
-            try {
-                watcherExecutor.shutdownNow();
-            } catch (Exception ignored) {
-            }
-            watcherExecutor = null;
-        }
     }
 
     // -------------------- run / process helpers --------------------
