@@ -74,7 +74,7 @@ public class App extends JFrame {
 
     public App() {
         setSize(1000, 650);
-        setTitle("CodeLite");
+        setTitle("Java•UI");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
         setLocationRelativeTo(null);
@@ -231,7 +231,7 @@ public class App extends JFrame {
 
         JMenuItem newProjectItem = new JMenuItem("Open new Project");
         JMenuItem closeProjectItem = new JMenuItem("Close project");
-        JMenuItem exitItem = new JMenuItem("Exit CodeLite");
+        JMenuItem exitItem = new JMenuItem("Exit Java•UI");
 
         newProjectItem.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 15));
         closeProjectItem.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 15));

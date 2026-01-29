@@ -24,14 +24,14 @@ public class WelcomeView extends JPanel implements ComponentListener {
         this.setLayout(null);
         this.setOpaque(false);
 
-        titleLabel = new JLabel("{CodeLite}");
+        titleLabel = new JLabel("{Java•UI}");
         titleLabel.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.BOLD, 52));
         titleLabel.setForeground(Color.WHITE);
         titleLabel.setHorizontalAlignment(SwingConstants.CENTER);
 
-        mottoLabel = new JLabel("Code editing simplified");
-        mottoLabel.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 24));
-        mottoLabel.setForeground(Color.WHITE);
+        mottoLabel = new JLabel("You code, We watch!!");
+        mottoLabel.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 20));
+        mottoLabel.setForeground(Color.GRAY);
         mottoLabel.setHorizontalAlignment(SwingConstants.CENTER);
 
         openProjectButton = new JButton("Open Project");

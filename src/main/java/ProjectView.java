@@ -87,7 +87,7 @@ public class ProjectView extends JPanel {
                     if (node.isDirectory) {
                         // Folder selected → keep editor in "No files selected"
                         app.editorView.showNoFileSelected();
-                        app.setTitle("CodeLite");
+                        app.setTitle("Java•UI");
                         return;
                     }
 
@@ -125,7 +125,7 @@ public class ProjectView extends JPanel {
     public void setEditorContent(EditorView editorView, CustomNode node) {
         editorView.setText(node.getContent());
         editorView.clearDirty();
-        app.setTitle("CodeLite - " + node.getNodeName());
+        app.setTitle("Java•UI - " + node.getNodeName());
     }
 
     public void addComponent() {
@@ -435,7 +435,7 @@ public class ProjectView extends JPanel {
             model.reload();
 
             // If renamed file was open, update editor title/path
-            app.setTitle("CodeLite - " + newName);
+            app.setTitle("Java•UI - " + newName);
         } else {
             JOptionPane.showMessageDialog(this, "Could not rename the file", "Rename Error", JOptionPane.ERROR_MESSAGE);
         }
