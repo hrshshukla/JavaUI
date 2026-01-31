@@ -30,6 +30,7 @@ public class ProjectView extends JPanel {
     private static Icon folderIcon;
     private static Icon javaFileIcon;
     private static Icon defaultFileIcon;
+    private static Icon classFileIcon;
 
     // popup menu for create/rename/delete
     private JPopupMenu popupMenu;
@@ -52,7 +53,8 @@ public class ProjectView extends JPanel {
         projectScrollPane = new JScrollPane(projectTree);
 
         folderIcon = new ImageIcon(Objects.requireNonNull(ProjectView.class.getResource("/icons/folder_icon_24.png")));
-        // optional icons (make sure these files exist in resources/icons)
+        classFileIcon = new ImageIcon(Objects.requireNonNull(ProjectView.class.getResource("/icons/classIcon.png")));
+
         try {
             javaFileIcon = new ImageIcon(Objects.requireNonNull(ProjectView.class.getResource("/icons/javaIcon.png")));
         } catch (Exception ex) {
@@ -95,6 +97,10 @@ public class ProjectView extends JPanel {
                     // If you prefer double-click-only open, check e.getClickCount() >= 2
                     setEditorContent(app.editorView, node);
                     app.editorView.showEditor();
+                    // If watcher is enabled, let it handle this selected file
+                    if (app != null && app.watcherController != null && app.watcherController.isEnabled()) {
+                        app.watcherController.onFileSelected(node);
+                    }
 
                     CustomNode parentNode = (CustomNode) node.getParent();
                     if (parentNode != null) {
@@ -132,39 +138,85 @@ public class ProjectView extends JPanel {
         this.add(projectScrollPane, BorderLayout.CENTER);
     }
 
-    public void openProject() {
+    // returns true if user selected a folder and project was opened, false if
+    // cancelled
+    // returns true if user selected a folder and project was opened, false if
+    // cancelled
+    public boolean openProject() {
         JFileChooser chooser = new JFileChooser();
         chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
-        chooser.setAcceptAllFileFilterUsed(false);
-        chooser.setApproveButtonText("Open Folder");
+        chooser.setDialogTitle("Open");
 
-        int result = chooser.showOpenDialog(null);
-        File file = chooser.getSelectedFile();
-
-        if (result == JFileChooser.APPROVE_OPTION) {
-
-            if (file == null || !file.isDirectory()) {
-                JOptionPane.showMessageDialog(
-                        null,
-                        "Please select a folder (project directory)",
-                        "Invalid Selection",
-                        JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-
-            projectPath = file.getAbsolutePath();
-
-            String folderName = file.getName();
-            root.setNodeName(folderName);
-            root.setFilePath(projectPath);
-            root.isDirectory = true;
-            root.removeAllChildren();
-
-            openDirectory(file);
+        // parent the dialog to app so modality/focus works correctly
+        int result = chooser.showOpenDialog(app);
+        if (result != JFileChooser.APPROVE_OPTION) {
+            // user cancelled or closed the dialog -> do nothing
+            return false;
         }
 
-        // expand root for convenience
-        SwingUtilities.invokeLater(() -> projectTree.expandRow(0));
+        File selected = chooser.getSelectedFile();
+        if (selected == null) {
+            // defensive: no selection -> bail out
+            return false;
+        }
+
+        // if selected is a file, use its parent as project root
+        File projectDir = selected.isDirectory() ? selected : selected.getParentFile();
+        if (projectDir == null || !projectDir.exists()) {
+            return false;
+        }
+
+        try {
+            // set project path
+            projectPath = projectDir.getAbsolutePath();
+
+            // If root node already exists (created in init), update its display name and
+            // path.
+            // Otherwise create a fresh root and install into the tree model.
+            if (root == null) {
+                root = new CustomNode(projectDir.getName(), null, projectPath);
+                root.isDirectory = true;
+                projectTree.setModel(new DefaultTreeModel(root));
+            } else {
+                root.setNodeName(projectDir.getName());
+                root.setFilePath(projectPath);
+                root.isDirectory = true;
+                // clear any previous children (openDirectory will repopulate)
+                root.removeAllChildren();
+            }
+
+            // Populate tree using your existing recursive loader (openDirectory uses root)
+            openDirectory(projectDir);
+            SwingUtilities.invokeLater(() -> {
+                try {
+                    // expand top node and refresh UI reliably
+                    if (projectTree.getModel() != null) {
+                        projectTree.updateUI();
+                        projectTree.expandRow(0);
+                        projectTree.repaint();
+                        projectTree.revalidate();
+                    }
+                    // If you maintain a tree model variable, you can also call:
+                    // ((DefaultTreeModel) projectTree.getModel()).reload();
+                } catch (Exception ignored) {
+                }
+            });
+
+            // Expand top node so user sees project contents immediately
+            if (projectTree.getRowCount() > 0) {
+                projectTree.expandRow(0);
+            }
+
+            // Ensure renderer/icons are applied (refresh cell renderer)
+            refreshTree();
+
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(app, "Failed to open folder:\n" + ex.getMessage(),
+                    "Open Error", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        return true;
     }
 
     public void openDirectory(File inputFile) {
@@ -434,7 +486,6 @@ public class ProjectView extends JPanel {
             model.nodeChanged(selNode);
             model.reload();
 
-            // If renamed file was open, update editor title/path
             app.setTitle("Java•UI - " + newName);
         } else {
             JOptionPane.showMessageDialog(this, "Could not rename the file", "Rename Error", JOptionPane.ERROR_MESSAGE);
@@ -461,6 +512,10 @@ public class ProjectView extends JPanel {
                     // Java file icon
                     else if (node.getNodeName().endsWith(".java") && javaFileIcon != null) {
                         setIcon(javaFileIcon);
+                    }
+                    // Class file icon
+                    else if (node.getNodeName().endsWith(".class") && classFileIcon != null) {
+                        setIcon(classFileIcon);
                     }
                     // Default file icon
                     else if (defaultFileIcon != null) {

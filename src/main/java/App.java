@@ -14,15 +14,12 @@ import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JFrame;
-import javax.swing.JLabel;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
-import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.UIManager;
@@ -40,6 +37,7 @@ public class App extends JFrame {
 
     private HotReloadManager hotReloadManager;
     private JavaRunManager javaRunManager;
+    public WatcherController watcherController;
 
     public JPanel rightSplitPanel;
     public JPanel toolPanel;
@@ -108,7 +106,6 @@ public class App extends JFrame {
 
         toolPanel.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
-        // create the run output component (replaces old ensureRunOutputPanel)
         runOutputPanelComponent = new RunOutputPanel();
 
         // split editor (top) and run output (bottom)
@@ -155,42 +152,78 @@ public class App extends JFrame {
                 600L // debounce (ms)
         );
 
-        // Create JavaRunManager and pass callbacks:
-        // - appendToRunOutput: App::appendToRunOutput
-        // - onFinish: restore play icon on UI thread
         javaRunManager = new JavaRunManager(
                 (msg) -> appendToRunOutput(msg),
                 () -> {
                     SwingUtilities.invokeLater(() -> {
-                        if (runButton != null && playIcon != null) {
-                            runButton.setIcon(playIcon);
+                        // Only set play icon when watcher is NOT enabled
+                        if (watcherController == null || !watcherController.isEnabled()) {
+                            if (runButton != null && playIcon != null) {
+                                runButton.setIcon(playIcon);
+                            }
                         }
                     });
                 });
 
-        // Run button action (toggle). Only switch to pause if run actually started.
+        ImageIcon eyeOpenIcon = new ImageIcon(App.class.getResource("/icons/eyeOpen.png"));
+        ImageIcon eyeCloseIcon = new ImageIcon(App.class.getResource("/icons/eyeClose.png"));
+
+        watcherController = new WatcherController(
+                this,
+                hotReloadManager,
+                javaRunManager,
+                runOutputPanelComponent,
+                runButton,
+                eyeOpenIcon,
+                eyeCloseIcon,
+                pauseIcon,
+                playIcon);
+
         runButton.addActionListener(e -> {
-            if (currentProcess != null) {
-                // user clicked Pause: stop run + watcher
-                stopRun();
-                hotReloadManager.stopWatching();
+            // If watcher is ON, clicking run should TURN OFF watcher first
+            if (watcherController != null && watcherController.isEnabled()) {
+                watcherController.disableIfEnabled();
+                // continue after disabling watcher
+            }
+
+            // Now do normal run toggle (watcher is definitely OFF here)
+            if (javaRunManager.isRunning()) {
+                javaRunManager.stopRun();
                 if (playIcon != null)
                     runButton.setIcon(playIcon);
             } else {
-                // attempt to start run - method returns true only if run started
-                boolean started = startRunForSelectedFile_andStartWatcher();
-                if (started) {
-                    if (pauseIcon != null)
-                        runButton.setIcon(pauseIcon);
-                } else {
-                    if (playIcon != null)
-                        runButton.setIcon(playIcon);
+                // Start run for selected file (but DO NOT start watcher)
+                CustomNode node = projectView.getSelectedCustomNode();
+                if (node == null || node.isDirectory || node.getFilePath() == null
+                        || !node.getFilePath().endsWith(".java")) {
+                    JOptionPane.showMessageDialog(this, "Select a Java file to run", "No File Selected",
+                            JOptionPane.WARNING_MESSAGE);
+                    return;
                 }
+
+                // save
+                try (FileWriter fw = new FileWriter(new File(node.getFilePath()))) {
+                    fw.write(editorView.getText());
+                    editorView.clearDirty();
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(this, "Failed to save file before running:\n" + ex.getMessage(),
+                            "Save Error", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+
+                if (runOutputPanelComponent == null)
+                    runOutputPanelComponent = new RunOutputPanel();
+                runOutputPanelComponent.clear();
+
+                javaRunManager.startRun(node.getFilePath());
+                // set pause icon
+                if (pauseIcon != null)
+                    runButton.setIcon(pauseIcon);
             }
         });
 
+        toolPanel.add(watcherController.getButton());
         toolPanel.add(refreshIconLabel);
-
         toolPanel.add(runButton);
 
         autoSave = true;
@@ -222,7 +255,7 @@ public class App extends JFrame {
         JMenu settingsMenu = new JMenu("Settings");
         settingsMenu.setCursor(new Cursor(Cursor.HAND_CURSOR));
         settingsMenu.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 18));
-        
+
         if (settingIcon != null) {
             Image img = settingIcon.getImage().getScaledInstance(24, 24, Image.SCALE_SMOOTH);
             settingsMenu.setIcon(new ImageIcon(img));
@@ -236,7 +269,6 @@ public class App extends JFrame {
         newProjectItem.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 15));
         closeProjectItem.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 15));
         exitItem.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 15));
-        
 
         newProjectItem.addActionListener(e -> {
             projectView.getProjectTree().removeAll();
@@ -268,7 +300,7 @@ public class App extends JFrame {
         // split panel
         this.add(rootPanel, BorderLayout.CENTER);
 
-        // show welcome 
+        // show welcome
         setContentPane(welcomeView);
 
         // editor placeholder
@@ -277,6 +309,18 @@ public class App extends JFrame {
         revalidate();
         repaint();
         setVisible(true);
+
+        PassThroughGlassPane glassPane = new PassThroughGlassPane(this, " by Harsh Shukla");
+        setGlassPane(glassPane);
+        glassPane.setVisible(true);
+
+        // optional extra safety (not strictly required with new class)
+        SwingUtilities.invokeLater(() -> {
+            glassPane.setBounds(0, 0, getRootPane().getWidth(), getRootPane().getHeight());
+            glassPane.revalidate();
+            glassPane.repaint();
+        });
+
     }
 
     public void launch() {
@@ -295,7 +339,6 @@ public class App extends JFrame {
             return false;
         }
 
-
         try (FileWriter fw = new FileWriter(new File(node.getFilePath()))) {
             fw.write(editorView.getText());
             if (editorView != null)
@@ -305,7 +348,6 @@ public class App extends JFrame {
                     JOptionPane.ERROR_MESSAGE);
             return false;
         }
-
 
         if (runOutputPanelComponent == null) {
             runOutputPanelComponent = new RunOutputPanel();

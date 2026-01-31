@@ -72,16 +72,53 @@ public class EditorView extends RSyntaxTextArea implements KeyListener {
         // Increase line number font size
         editorScrollPane.getGutter().setLineNumberFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 24));
 
-        // placeholder label (centered)
+        // placeholder components (logo above text)
         placeholderLabel = new JLabel("No files selected", SwingConstants.CENTER);
         placeholderLabel.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 18));
-        placeholderLabel.setBorder(BorderFactory.createEmptyBorder(24, 24, 24, 24));
+        placeholderLabel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        placeholderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        // try common resource paths for the logo
+        ImageIcon logoIcon = null;
+        java.net.URL logoUrl = EditorView.class.getResource("/resources/icons/bw-logo.png");
+        if (logoUrl == null)
+            logoUrl = EditorView.class.getResource("/icons/bw-logo.png");
+        if (logoUrl != null) {
+            Image img = new ImageIcon(logoUrl).getImage();
+            // scale to a reasonable size; change 128 to whatever fits your UI
+            int w = 128, h = 128;
+            Image scaled = img.getScaledInstance(w, h, Image.SCALE_SMOOTH);
+            logoIcon = new ImageIcon(scaled);
+        }
+
+        JLabel logoLabel = new JLabel();
+        logoLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        logoLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        if (logoIcon != null) {
+            logoLabel.setIcon(logoIcon);
+        } else {
+            // fallback text if resource not found (optional)
+            logoLabel.setText("");
+            logoLabel.setPreferredSize(new Dimension(128, 128));
+        }
+
+        // vertical panel to center logo above the text
+        JPanel placeholderPanel = new JPanel();
+        placeholderPanel.setLayout(new BoxLayout(placeholderPanel, BoxLayout.Y_AXIS));
+        placeholderPanel.setBorder(BorderFactory.createEmptyBorder(24, 24, 24, 24));
+        placeholderPanel.add(logoLabel);
+        placeholderPanel.add(Box.createRigidArea(new Dimension(0, 12)));
+        placeholderPanel.add(placeholderLabel);
 
         cardLayout = new CardLayout();
         containerPanel = new JPanel(cardLayout);
 
         containerPanel.add(editorScrollPane, "EDITOR");
-        containerPanel.add(placeholderLabel, "EMPTY");
+        JPanel emptyWrapper = new JPanel(new GridBagLayout());
+        emptyWrapper.add(placeholderPanel); // auto center (horizontal + vertical)
+
+        containerPanel.add(emptyWrapper, "EMPTY");
+
         cardLayout.show(containerPanel, "EMPTY");
 
         updateLineNumberFont(this.getFont().getSize());
@@ -151,7 +188,6 @@ public class EditorView extends RSyntaxTextArea implements KeyListener {
             Font newFont = new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, fontSize);
             this.setFont(newFont);
 
-            // 🔥 IMPORTANT: sync line number font
             updateLineNumberFont(fontSize);
         }
     }

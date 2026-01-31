@@ -1,4 +1,7 @@
 import javax.swing.*;
+
+import com.formdev.flatlaf.fonts.jetbrains_mono.FlatJetBrainsMonoFont;
+
 import java.awt.*;
 import java.util.Objects;
 
@@ -6,9 +9,9 @@ import java.util.Objects;
  * RunOutputPanel
  *
  * Encapsulates the Run Output UI:
- *  - header with title and a hide button (hide action provided by caller)
- *  - a JTextArea inside a JScrollPane
- *  - public API: getPanel(), append(String), clear(), setHideCallback(Runnable)
+ * - header with title and a hide button (hide action provided by caller)
+ * - a JTextArea inside a JScrollPane
+ * - public API: getPanel(), append(String), clear(), setHideCallback(Runnable)
  *
  * Designed to be used inside a JSplitPane as the bottom component.
  */
@@ -23,10 +26,14 @@ public class RunOutputPanel {
         panel = new JPanel(new BorderLayout());
         panel.setOpaque(false);
 
+        ImageIcon terminalIcon = new ImageIcon(
+                RunOutputPanel.class.getResource("/icons/terminalIcon.png"));
+
         // text area
         outputArea = new JTextArea();
         outputArea.setEditable(false);
-        outputArea.setFont(new Font("JetBrains Mono", Font.PLAIN, 12)); // will match your FlatJetBrainsMonoFont if installed
+        outputArea.setFont(new Font("JetBrains Mono", Font.PLAIN, 12)); // will match your FlatJetBrainsMonoFont if
+                                                                        // installed
         scrollPane = new JScrollPane(outputArea);
         scrollPane.setPreferredSize(new Dimension(800, 200));
 
@@ -35,12 +42,25 @@ public class RunOutputPanel {
         header.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
         header.setOpaque(false);
 
-        JLabel title = new JLabel("Run Output");
-        title.setFont(new Font("JetBrains Mono", Font.PLAIN, 18));
-        
+        JPanel titlePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        titlePanel.setOpaque(false);
+
+        JLabel iconLabel = new JLabel();
+        if (terminalIcon != null) {
+            iconLabel.setIcon(terminalIcon);
+        }
+
+        JLabel titleLabel = new JLabel("Run Output");
+        titleLabel.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 16));
+
+        titlePanel.add(iconLabel);
+        titlePanel.add(titleLabel);
+
+        header.add(titlePanel, BorderLayout.WEST);
+
         JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         rightButtons.setOpaque(false);
-        
+
         JButton hideBtn = new JButton("Hide");
         hideBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         hideBtn.setFont(new Font("JetBrains Mono", Font.PLAIN, 16));
@@ -57,7 +77,7 @@ public class RunOutputPanel {
 
         rightButtons.add(hideBtn);
 
-        header.add(title, BorderLayout.WEST);
+        
         header.add(rightButtons, BorderLayout.EAST);
 
         panel.add(header, BorderLayout.NORTH);
@@ -79,7 +99,8 @@ public class RunOutputPanel {
 
     /** Append text to output area (EDT-safe). */
     public void append(String s) {
-        if (s == null) return;
+        if (s == null)
+            return;
         SwingUtilities.invokeLater(() -> {
             outputArea.append(s);
             outputArea.setCaretPosition(outputArea.getDocument().getLength());
