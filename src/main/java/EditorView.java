@@ -75,6 +75,7 @@ public class EditorView extends RSyntaxTextArea implements KeyListener {
         // placeholder components (logo above text)
         placeholderLabel = new JLabel("No files selected", SwingConstants.CENTER);
         placeholderLabel.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 18));
+        placeholderLabel.setForeground(new Color(255, 255, 255, 100));
         placeholderLabel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         placeholderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
@@ -100,6 +101,7 @@ public class EditorView extends RSyntaxTextArea implements KeyListener {
             // fallback text if resource not found (optional)
             logoLabel.setText("");
             logoLabel.setPreferredSize(new Dimension(128, 128));
+            
         }
 
         // vertical panel to center logo above the text

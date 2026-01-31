@@ -271,10 +271,14 @@ public class App extends JFrame {
         exitItem.setFont(new Font(FlatJetBrainsMonoFont.FAMILY, Font.PLAIN, 15));
 
         newProjectItem.addActionListener(e -> {
-            projectView.getProjectTree().removeAll();
-            if (projectView.root != null)
-                projectView.root.removeAllChildren();
-            projectView.openProject();
+            boolean opened = projectView.openProject();
+            if (opened) {
+                SwingUtilities.invokeLater(() -> {
+                    launch();
+                    revalidate();
+                    repaint();
+                });
+            }
         });
 
         closeProjectItem.addActionListener(e -> {

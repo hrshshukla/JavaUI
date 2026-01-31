@@ -87,7 +87,6 @@ public class ProjectView extends JPanel {
                     CustomNode node = (CustomNode) sel;
 
                     if (node.isDirectory) {
-                        // Folder selected → keep editor in "No files selected"
                         app.editorView.showNoFileSelected();
                         app.setTitle("Java•UI");
                         return;
@@ -230,7 +229,6 @@ public class ProjectView extends JPanel {
         // clear any selection that might have been created during tree reload/expansion
         projectTree.clearSelection();
 
-        // ensure editor stays in "No files selected" state after opening a project
         if (app != null && app.editorView != null) {
             app.editorView.showNoFileSelected();
         }
