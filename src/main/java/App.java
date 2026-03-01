@@ -90,7 +90,7 @@ public class App extends JFrame {
         welcomeView = new WelcomeView(this);
 
         projectView = new ProjectView(this);
-        projectView.setMinimumSize(new Dimension(200, 0));
+        projectView.setMinimumSize(new Dimension(300, 0));
         projectView.init();
         projectView.initActionListeners();
 

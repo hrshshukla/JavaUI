@@ -86,9 +86,8 @@ public class EditorView extends RSyntaxTextArea implements KeyListener {
             logoUrl = EditorView.class.getResource("/icons/bw-logo.png");
         if (logoUrl != null) {
             Image img = new ImageIcon(logoUrl).getImage();
-            // scale to a reasonable size; change 128 to whatever fits your UI
-            int w = 128, h = 128;
-            Image scaled = img.getScaledInstance(w, h, Image.SCALE_SMOOTH);
+            
+            Image scaled = img.getScaledInstance(128, 128, Image.SCALE_SMOOTH);
             logoIcon = new ImageIcon(scaled);
         }
 
@@ -167,7 +166,7 @@ public class EditorView extends RSyntaxTextArea implements KeyListener {
     }
 
     private int fontSize = 12;
-    private static final int MIN_FONT_SIZE = 8;
+    private static final int MIN_FONT_SIZE = 12;
     private static final int MAX_FONT_SIZE = 72;
 
     @Override
