@@ -4,35 +4,11 @@
 A minimalistic code editor built using Java swing, flatlaf and RSyntaxTextArea.
 This project is meant for learning and experimental purposes, by no means this is a production-ready code editor, but rather a fun attempt to learn and create my own code editor
 
-<div align="center">
-<div style="
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 20px;
-  background-color: #fc0000d1;
-  color: white;
-  font-weight: bold;
-  font-family: Arial, sans-serif;
-">
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/java/java-original.svg" height="30" alt="java logo"  />
-  JAVA
-</div>
+<p align="center">
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/java/java-original.svg" height="30" alt="java logo" />
   <img src="https://img.shields.io/badge/Apache Maven-C71A36?logo=apachemaven&logoColor=white&style=for-the-badge" height="30" alt="apachemaven logo"  />
-<div style="
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 20px;
-  background-color: #ff000092;
-  color: white;
-  font-weight: bold;
-  font-family: Arial, sans-serif;
-"> <img height="30" alt="" />
-   SWING
-</div>
-</div>
-
+  <img src="https://img.shields.io/badge/SWING-%23FF0000?style=for-the-badge" height="30" alt="swing badge"/>
+</p>
 # The Problem and solution
 
 When developing GUI applications in Java, every minor change required a full recompile and restart of the program. Iterating on the user interface became a tedious cycle of build, launch, test, tweak and repeat. This project addresses that pain by providing a lightweight Swing-based code editor with hot‑reload capability, letting you see UI changes instantly and greatly speeding up development.
