@@ -1,9 +1,8 @@
 # JavaUI
+
 ![alt text](Assets/JavaUI.png)
-A minimalistic code editor built using Java swing, flatlaf and RSyntaxTextArea. 
+A minimalistic code editor built using Java swing, flatlaf and RSyntaxTextArea.
 This project is meant for learning and experimental purposes, by no means this is a production-ready code editor, but rather a fun attempt to learn and create my own code editor
-
-
 
 <div align="center">
 <div style="
@@ -34,23 +33,26 @@ This project is meant for learning and experimental purposes, by no means this i
 </div>
 </div>
 
-
 # The Problem and solution
+
 When developing GUI applications in Java, every minor change required a full recompile and restart of the program. Iterating on the user interface became a tedious cycle of build, launch, test, tweak and repeat. This project addresses that pain by providing a lightweight Swing-based code editor with hot‑reload capability, letting you see UI changes instantly and greatly speeding up development.
 
 # Features
-* Syntax highlighting
-* Auto save
-* Adding, deleting or renaming files
-* Open native terminal
-* Language support for Java - AWT, SWING (more to be added soon)
-* Dark theme
-* Hot reload of UI changes
+
+- Syntax highlighting
+- Auto save
+- Adding, deleting or renaming files
+- Open native terminal
+- Language support for Java - AWT, SWING (more to be added soon)
+- Dark theme
+- Hot reload of UI changes
 
 # UI Blocks explaination
+
 ![alt text](Assets/Flow.png)
 
-# Directory structure 
+# Directory structure
+
 ```
 JavaUI
 ├─ DOCUMENTATION.md
